@@ -146,7 +146,7 @@ export default function App() {
             setFirebaseError(`Firebaseの初期化に失敗しました: ${error.message}`);
             setIsAuthReady(true);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // --- Data Fetching (Normal Mode) ---
