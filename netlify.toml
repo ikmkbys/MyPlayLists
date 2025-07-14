@@ -1,7 +1,7 @@
 # Netlifyのビルド設定
 [build]
   # Reactアプリをビルドするためのコマンド
-  command = "npm run build"
+  command = "npm run build && sed -i 's|__FIREBASE_CONFIG_PLACEHOLDER__|'\"$REACT_APP_FIREBASE_CONFIG\"'|' build/index.html"
   
   # ★★★★★ ここが重要 ★★★★★
   # Netlifyが公開するフォルダを指定します。

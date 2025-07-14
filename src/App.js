@@ -28,16 +28,21 @@ import {
 import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
 
 // --- Firebase Configuration ---
-// This logic safely handles environment variables for both Netlify deployment and local development.
-const firebaseConfig = 
-    (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
-        ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
-        : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
+let firebaseConfig = {};
+let firebaseInitializationError = null;
 
-const appId = 
-    (typeof process !== 'undefined' && process.env.REACT_APP_ID)
-        ? process.env.REACT_APP_ID
-        : (typeof window !== 'undefined' && window.__app_id ? window.__app_id : 'default-my-playlists-app');
+try {
+    if (typeof window !== 'undefined' && window.__firebase_config && window.__firebase_config !== '__FIREBASE_CONFIG_PLACEHOLDER__') {
+        firebaseConfig = JSON.parse(window.__firebase_config);
+    } else {
+        firebaseInitializationError = "Firebaseの設定が読み込めませんでした。";
+    }
+} catch (e) {
+    firebaseInitializationError = `Firebase設定の解析に失敗しました: ${e.message}`;
+    console.error("Firebase config parsing error:", e);
+}
+
+const appId = 'default-my-playlists-app';
 
 
 // --- Main App Component ---
@@ -47,7 +52,7 @@ export default function App() {
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [firebaseError, setFirebaseError] = useState(null);
+    const [firebaseError, setFirebaseError] = useState(firebaseInitializationError);
 
     const [playlists, setPlaylists] = useState([]);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
@@ -99,8 +104,8 @@ export default function App() {
 
     // --- Firebase & Auth & Share-Mode Initialization ---
     useEffect(() => {
-        try {
-            if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
+        if (!firebaseError && Object.keys(firebaseConfig).length > 0) {
+            try {
                 const app = initializeApp(firebaseConfig);
                 const authInstance = getAuth(app);
                 const dbInstance = getFirestore(app);
@@ -137,16 +142,14 @@ export default function App() {
                     });
                     return () => unsubscribe();
                 }
-            } else {
-                setFirebaseError("Firebaseの設定が読み込めませんでした。Netlifyの環境変数が正しく設定されているか確認してください。");
+            } catch (error) {
+                console.error("Firebase initialization error:", error);
+                setFirebaseError(`Firebaseの初期化に失敗しました: ${error.message}`);
                 setIsAuthReady(true);
             }
-        } catch (error) {
-            console.error("Firebase initialization error:", error);
-            setFirebaseError(`Firebaseの初期化に失敗しました: ${error.message}`);
-            setIsAuthReady(true);
+        } else {
+             setIsAuthReady(true);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // --- Data Fetching (Normal Mode) ---
