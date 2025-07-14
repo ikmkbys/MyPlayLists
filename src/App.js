@@ -3,9 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
     onAuthStateChanged,
-    GoogleAuthProvider,
-    signInWithPopup,
-    signOut
+    signInAnonymously
 } from 'firebase/auth';
 import { 
     getFirestore, 
@@ -25,7 +23,7 @@ import {
     where,
     arrayRemove
 } from 'firebase/firestore';
-import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
+import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, Mail, Shield } from 'lucide-react';
 
 // --- Firebase Configuration ---
 const firebaseConfig = 
@@ -49,7 +47,7 @@ try {
         authInstance = getAuth(app);
         dbInstance = getFirestore(app);
     } else {
-        firebaseInitializationError = "Firebaseの設定が読み込めませんでした。Netlifyの環境変数が正しく設定されているか確認してください。";
+        firebaseInitializationError = "Firebaseの設定が読み込めませんでした。";
     }
 } catch (error) {
     console.error("Firebase initialization error:", error);
@@ -61,7 +59,7 @@ export default function App() {
     // --- State Management ---
     const [auth] = useState(authInstance);
     const [db] = useState(dbInstance);
-    const [user, setUser] = useState(null);
+    const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [firebaseError] = useState(firebaseInitializationError);
 
@@ -117,8 +115,16 @@ export default function App() {
     useEffect(() => {
         if (auth) {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
-                setUser(user);
-                setIsAuthReady(true);
+                if (user) {
+                    setUserId(user.uid);
+                    setIsAuthReady(true);
+                } else {
+                    signInAnonymously(auth).catch(err => {
+                        console.error("Anonymous sign-in failed:", err);
+                        // setFirebaseError("匿名での認証に失敗しました。");
+                        setIsAuthReady(true);
+                    });
+                }
             });
             return () => unsubscribe();
         } else {
@@ -155,30 +161,30 @@ export default function App() {
 
     // --- Data Fetching (Normal Mode) ---
     useEffect(() => {
-        if (shareMode || !isAuthReady || !db || !user) return;
+        if (shareMode || !isAuthReady || !db || !userId) return;
         setIsLoadingPlaylists(true);
-        const q = query(collection(db, `artifacts/${appId}/users/${user.uid}/playlists`), orderBy('position', 'asc'));
+        const q = query(collection(db, `artifacts/${appId}/users/${userId}/playlists`), orderBy('position', 'asc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setPlaylists(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setIsLoadingPlaylists(false);
         }, (error) => { setIsLoadingPlaylists(false); });
         return () => unsubscribe();
-    }, [isAuthReady, db, user, shareMode]);
+    }, [isAuthReady, db, userId, shareMode]);
 
     useEffect(() => {
-        if (shareMode || !isAuthReady || !db || !user) return;
-        const q = query(collection(db, `artifacts/${appId}/users/${user.uid}/tags`), orderBy('name'));
+        if (shareMode || !isAuthReady || !db || !userId) return;
+        const q = query(collection(db, `artifacts/${appId}/users/${userId}/tags`), orderBy('name'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setAllTags(snapshot.docs.map(doc => doc.data().name));
         });
         return () => unsubscribe();
-    }, [isAuthReady, db, user, shareMode]);
+    }, [isAuthReady, db, userId, shareMode]);
 
 
     // --- Data Fetching: Contents (Both Modes) ---
     useEffect(() => {
         if (!selectedPlaylist || !db) { setContents([]); return; }
-        const ownerId = shareMode ? new URLSearchParams(window.location.search).get('share_user') : user?.uid;
+        const ownerId = shareMode ? new URLSearchParams(window.location.search).get('share_user') : userId;
         if (!ownerId) return;
         
         const isInbox = selectedPlaylist.id === 'inbox';
@@ -196,49 +202,22 @@ export default function App() {
             setIsLoadingContents(false);
         }, (error) => { setIsLoadingContents(false); });
         return () => unsubscribe();
-    }, [selectedPlaylist, db, user, shareMode]);
+    }, [selectedPlaylist, db, userId, shareMode]);
 
     // --- Data Fetching: Authors (Normal Mode) ---
     useEffect(() => {
-        if (shareMode || !isAuthReady || !db || !user) return;
-        const q = query(collection(db, `artifacts/${appId}/users/${user.uid}/authors`), orderBy('name'));
+        if (shareMode || !isAuthReady || !db || !userId) return;
+        const q = query(collection(db, `artifacts/${appId}/users/${userId}/authors`), orderBy('name'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setPersonalities(snapshot.docs.map(doc => doc.data().name));
         });
         return () => unsubscribe();
-    }, [isAuthReady, db, user, shareMode]);
-
-    // --- Auth Handlers ---
-    const handleGoogleLogin = async () => {
-        if (!auth) {
-            alert("認証サービスの準備ができていません。少し待ってからもう一度お試しください。");
-            return;
-        }
-        const provider = new GoogleAuthProvider();
-        try {
-            await signInWithPopup(auth, provider);
-        } catch (error) {
-            console.error("Google login failed:", error);
-            alert(`ログインに失敗しました。\nエラー: ${error.code}\n\nポップアップがブロックされていないか、Firebaseの承認済みドメインが正しく設定されているか確認してください。`);
-        }
-    };
-
-    const handleLogout = async () => {
-        if (!auth) return;
-        try {
-            await signOut(auth);
-            setPlaylists([]);
-            setSelectedPlaylist(null);
-            setContents([]);
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    };
+    }, [isAuthReady, db, userId, shareMode]);
 
     // --- Tag Management ---
     const updateTagsCollection = async (tagsArray) => {
-        if (!db || !user) return;
-        const tagsRef = collection(db, `artifacts/${appId}/users/${user.uid}/tags`);
+        if (!db || !userId) return;
+        const tagsRef = collection(db, `artifacts/${appId}/users/${userId}/tags`);
         const querySnapshot = await getDocs(tagsRef);
         const existingTags = querySnapshot.docs.map(doc => doc.id);
         const batch = writeBatch(db);
@@ -253,12 +232,12 @@ export default function App() {
     // --- Playlist Handlers ---
     const handleCreatePlaylist = async (e) => {
         e.preventDefault();
-        if (shareMode || !db || !user || newPlaylistName.trim() === '') return;
+        if (shareMode || !db || !userId || newPlaylistName.trim() === '') return;
         const tagsArray = newPlaylistTags.split(',').map(tag => tag.trim()).filter(Boolean);
         const finalTags = tagsArray.length > 0 ? tagsArray : ['タグ無し'];
 
         try {
-            await addDoc(collection(db, `artifacts/${appId}/users/${user.uid}/playlists`), {
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/playlists`), {
                 name: newPlaylistName.trim(), 
                 tags: finalTags,
                 createdAt: serverTimestamp(), 
@@ -289,12 +268,12 @@ export default function App() {
         setEditingPlaylistData({ name: '', tags: '' });
     };
     const handleSavePlaylistName = async () => {
-        if (shareMode || !db || !user || !selectedPlaylist || editingPlaylistData.name.trim() === '') return;
+        if (shareMode || !db || !userId || !selectedPlaylist || editingPlaylistData.name.trim() === '') return;
         const tagsArray = editingPlaylistData.tags.split(',').map(tag => tag.trim()).filter(Boolean);
         const finalTags = tagsArray.length > 0 ? tagsArray : ['タグ無し'];
         
         try {
-            await updateDoc(doc(db, `artifacts/${appId}/users/${user.uid}/playlists`, selectedPlaylist.id), { 
+            await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/playlists`, selectedPlaylist.id), { 
                 name: editingPlaylistData.name.trim(),
                 tags: finalTags
             });
@@ -304,9 +283,9 @@ export default function App() {
     };
     
     const handlePlaylistDragAndDrop = async (newOrder) => {
-        if (shareMode || !db || !user) return;
+        if (shareMode || !db || !userId) return;
         const batch = writeBatch(db);
-        newOrder.forEach((p, i) => batch.update(doc(db, `artifacts/${appId}/users/${user.uid}/playlists`, p.id), { position: i }));
+        newOrder.forEach((p, i) => batch.update(doc(db, `artifacts/${appId}/users/${userId}/playlists`, p.id), { position: i }));
         try { await batch.commit(); } catch (error) { setPlaylists(playlists); }
     };
 
@@ -327,7 +306,7 @@ export default function App() {
     const handleAddContent = async (e) => {
         e.preventDefault();
         setContentFormError('');
-        if (shareMode || !db || !user || !selectedPlaylist) return;
+        if (shareMode || !db || !userId || !selectedPlaylist) return;
         const url = newContentUrl.trim();
         if (url === '') { setContentFormError('URLは必須です。'); return; }
         if (!url.startsWith('http')) { setContentFormError('有効なURLを入力してください (http://...)'); return; }
@@ -352,10 +331,10 @@ export default function App() {
                 contentData.position = contents.length;
             }
 
-            await addDoc(collection(db, `artifacts/${appId}/users/${user.uid}/${targetCollection}`), contentData);
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/${targetCollection}`), contentData);
             
             if (author && !personalities.includes(author)) {
-                await setDoc(doc(db, `artifacts/${appId}/users/${user.uid}/authors`, author), { name: author });
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/authors`, author), { name: author });
             }
             setNewContentUrl(''); setNewContentTitle(''); setNewContentAuthor(''); setContentFormError('');
             newContentUrlInputRef.current?.focus();
@@ -375,24 +354,24 @@ export default function App() {
         setEditingContentData({ url: '', title: '', author: '', platform: '' });
     };
     const handleSaveContent = async (contentId) => {
-        if (shareMode || !db || !user || !selectedPlaylist) return;
+        if (shareMode || !db || !userId || !selectedPlaylist) return;
         const platform = detectPlatform(editingContentData.url);
         const collectionName = selectedPlaylist.id === 'inbox' ? 'inbox' : `playlists/${selectedPlaylist.id}/contents`;
         try {
-            await updateDoc(doc(db, `artifacts/${appId}/users/${user.uid}/${collectionName}`, contentId), {...editingContentData, platform});
+            await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, contentId), {...editingContentData, platform});
             handleCancelEditingContent();
         } catch (error) { console.error("Error updating content:", error); }
     };
 
     const handleContentDragAndDrop = async (newOrder) => {
-        if (shareMode || !db || !user || !selectedPlaylist || selectedPlaylist.id === 'inbox') return;
+        if (shareMode || !db || !userId || !selectedPlaylist || selectedPlaylist.id === 'inbox') return;
         const batch = writeBatch(db);
-        newOrder.forEach((b, i) => batch.update(doc(db, `artifacts/${appId}/users/${user.uid}/playlists/${selectedPlaylist.id}/contents`, b.id), { position: i }));
+        newOrder.forEach((b, i) => batch.update(doc(db, `artifacts/${appId}/users/${userId}/playlists/${selectedPlaylist.id}/contents`, b.id), { position: i }));
         try { await batch.commit(); } catch (error) { setContents(contents); }
     };
     
     const handleMoveContent = async (contentToMove, targetPlaylistId) => {
-        if (!db || !user || !selectedPlaylist) return;
+        if (!db || !userId || !selectedPlaylist) return;
     
         const sourceIsInbox = selectedPlaylist.id === 'inbox';
         const sourceCollectionPath = sourceIsInbox 
@@ -413,14 +392,14 @@ export default function App() {
             delete newContentData.position;
             newContentData.addedAt = serverTimestamp();
         } else {
-            const targetContentsSnapshot = await getDocs(collection(db, `artifacts/${appId}/users/${user.uid}/${targetCollectionPath}`));
+            const targetContentsSnapshot = await getDocs(collection(db, `artifacts/${appId}/users/${userId}/${targetCollectionPath}`));
             newContentData.position = targetContentsSnapshot.size;
         }
         
-        const newContentRef = doc(collection(db, `artifacts/${appId}/users/${user.uid}/${targetCollectionPath}`));
+        const newContentRef = doc(collection(db, `artifacts/${appId}/users/${userId}/${targetCollectionPath}`));
         batch.set(newContentRef, newContentData);
     
-        const oldContentRef = doc(db, `artifacts/${appId}/users/${user.uid}/${sourceCollectionPath}`, contentToMove.id);
+        const oldContentRef = doc(db, `artifacts/${appId}/users/${userId}/${sourceCollectionPath}`, contentToMove.id);
         batch.delete(oldContentRef);
     
         try {
@@ -439,7 +418,7 @@ export default function App() {
         
         if (type === 'playlist') {
             try {
-                await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/playlists`, id));
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/playlists`, id));
                 if (selectedPlaylist?.id === id) {
                     setSelectedPlaylist(null);
                 }
@@ -447,18 +426,18 @@ export default function App() {
         } else if (type === 'content') {
             const collectionName = selectedPlaylist.id === 'inbox' ? 'inbox' : `playlists/${selectedPlaylist.id}/contents`;
             try {
-                await deleteDoc(doc(db, `artifacts/${appId}/users/${user.uid}/${collectionName}`, id));
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/${collectionName}`, id));
             } catch (error) { console.error("Error deleting content:", error); }
         } else if (type === 'tag') {
             try {
                 const batch = writeBatch(db);
-                const tagRef = doc(db, `artifacts/${appId}/users/${user.uid}/tags`, name);
+                const tagRef = doc(db, `artifacts/${appId}/users/${userId}/tags`, name);
                 batch.delete(tagRef);
 
-                const playlistsQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/playlists`), where("tags", "array-contains", name));
+                const playlistsQuery = query(collection(db, `artifacts/${appId}/users/${userId}/playlists`), where("tags", "array-contains", name));
                 const playlistsSnapshot = await getDocs(playlistsQuery);
                 playlistsSnapshot.forEach(playlistDoc => {
-                    const playlistRef = doc(db, `artifacts/${appId}/users/${user.uid}/playlists`, playlistDoc.id);
+                    const playlistRef = doc(db, `artifacts/${appId}/users/${userId}/playlists`, playlistDoc.id);
                     const currentTags = playlistDoc.data().tags || [];
                     if (currentTags.length === 1 && currentTags[0] === name) {
                          batch.update(playlistRef, { tags: ['タグ無し'] });
@@ -490,11 +469,11 @@ export default function App() {
         setActiveView('search');
         setSearchResults([]);
 
-        const allPlaylistsSnapshot = await getDocs(collection(db, `artifacts/${appId}/users/${user.uid}/playlists`));
+        const allPlaylistsSnapshot = await getDocs(collection(db, `artifacts/${appId}/users/${userId}/playlists`));
         const allContentsPromises = [];
 
         allPlaylistsSnapshot.forEach(playlistDoc => {
-            const contentsPromise = getDocs(collection(db, `artifacts/${appId}/users/${user.uid}/playlists/${playlistDoc.id}/contents`));
+            const contentsPromise = getDocs(collection(db, `artifacts/${appId}/users/${userId}/playlists/${playlistDoc.id}/contents`));
             allContentsPromises.push(contentsPromise.then(snapshot => ({
                 playlistName: playlistDoc.data().name,
                 playlistId: playlistDoc.id,
@@ -502,7 +481,7 @@ export default function App() {
             })));
         });
         
-        const inboxPromise = getDocs(collection(db, `artifacts/${appId}/users/${user.uid}/inbox`));
+        const inboxPromise = getDocs(collection(db, `artifacts/${appId}/users/${userId}/inbox`));
         allContentsPromises.push(inboxPromise.then(snapshot => ({
             playlistName: 'あとで聴く',
             playlistId: 'inbox',
@@ -532,14 +511,14 @@ export default function App() {
     // --- Sharing Logic ---
     const openShareModal = (playlist) => {
         setPlaylistToShare(playlist);
-        setShareLink(`${window.location.origin}${window.location.pathname}?share_user=${user.uid}&share_playlist=${playlist.id}`);
+        setShareLink(`${window.location.origin}${window.location.pathname}?share_user=${userId}&share_playlist=${playlist.id}`);
         setIsShareModalOpen(true);
     };
     const closeShareModal = () => { setIsShareModalOpen(false); setPlaylistToShare(null); setShareLink(''); setIsCopied(false); };
     const togglePublicState = async (playlist) => {
-        if (!db || !user) return;
+        if (!db || !userId) return;
         const newPublicState = !playlist.isPublic;
-        await updateDoc(doc(db, `artifacts/${appId}/users/${user.uid}/playlists`, playlist.id), { isPublic: newPublicState });
+        await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/playlists`, playlist.id), { isPublic: newPublicState });
         setPlaylistToShare({ ...playlist, isPublic: newPublicState });
     };
     const copyToClipboard = () => {
@@ -615,29 +594,9 @@ export default function App() {
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                         {/* Playlists Column */}
                         <aside className="lg:col-span-4 xl:col-span-3 bg-white/70 backdrop-blur-xl border border-white/80 p-6 rounded-2xl shadow-lg">
-                            {user ? (
-                                <div className="flex items-center justify-between mb-6">
-                                    <div className="flex items-center gap-3">
-                                        <img src={user.photoURL} alt={user.displayName} className="w-10 h-10 rounded-full" />
-                                        <span className="font-semibold text-slate-700">{user.displayName}</span>
-                                    </div>
-                                    <button onClick={handleLogout} className="text-slate-500 hover:text-rose-600 p-2 rounded-full transition-colors" title="ログアウト"><LogOut size={20}/></button>
-                                </div>
-                            ) : (
-                                <div className="mb-6">
-                                    <button 
-                                        onClick={handleGoogleLogin} 
-                                        disabled={!auth}
-                                        className="w-full flex items-center justify-center gap-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
-                                    >
-                                        {!auth ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
-                                        <span>{!auth ? '準備中...' : 'Googleでログイン'}</span>
-                                    </button>
-                                    {firebaseError && <p className="text-red-500 text-xs mt-2">{firebaseError}</p>}
-                                </div>
-                            )}
+                            {firebaseError && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert"><strong className="font-bold">エラー: </strong><span className="block sm:inline">{firebaseError}</span></div>}
                             
-                            {user && <>
+                            {userId && <>
                                 <form onSubmit={handleSearch} className="relative mb-6">
                                     <input type="search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="全体検索..." className="w-full bg-white/50 border border-slate-300 rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition placeholder:text-slate-400" />
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20}/>
@@ -695,11 +654,11 @@ export default function App() {
                         </aside>
                         {/* Contents Column */}
                         <main className="lg:col-span-8 xl:col-span-9 bg-white/70 backdrop-blur-xl border border-white/80 p-8 rounded-2xl shadow-lg min-h-[60vh]">
-                           {!user ? (
+                           {!userId ? (
                                 <div className="flex flex-col items-center justify-center h-full text-center text-slate-500">
-                                    <LogIn size={64} className="mb-4" />
-                                    <h3 className="text-2xl font-semibold text-slate-600">ログインしてください</h3>
-                                    <p className="mt-2">左側のボタンからGoogleアカウントでログインして、<br/>あなただけのプレイリスト管理を始めましょう。</p>
+                                    <ListMusic size={64} className="mb-4" />
+                                    <h3 className="text-2xl font-semibold text-slate-600">ようこそ</h3>
+                                    <p className="mt-2">アプリの利用を開始しています...</p>
                                 </div>
                            ) : activeView === 'search' ? (
                                 <div>
@@ -893,20 +852,15 @@ const PrivacyPolicyModal = ({ closeModal }) => (
             <p>本アプリケーション「MyPlayLists」（以下、本アプリ）は、開発者 ikmkbys（以下、当方）が提供するものです。ユーザーの皆様に安心してご利用いただくため、以下の通りプライバシーポリシーを定めます。</p>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">1. 収集する情報</h4>
-                <p>本アプリでは、以下の情報を収集します。<br/>
-                - Googleアカウント情報（表示名、メールアドレス、プロフィール写真）: ユーザー認証および識別のため。<br/>
-                - ユーザーが作成したデータ（プレイリスト名、タグ、コンテンツのURL、タイトル、作者名など）: アプリの基本機能を提供するため。</p>
+                <p>本アプリは、ユーザーを識別するために、Firebase Authenticationによる匿名認証IDのみを利用します。Googleアカウント情報などの個人情報は収集しません。</p>
             </div>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">2. 情報の利用目的</h4>
-                <p>収集した情報は、以下の目的で利用します。<br/>
-                - ログイン機能の提供<br/>
-                - 複数端末間でのデータ同期<br/>
-                - アプリの機能改善および不具合修正</p>
+                <p>収集した匿名認証IDは、ユーザーが作成したプレイリストデータを、他のユーザーのデータと区別して安全に保管するためにのみ利用します。</p>
             </div>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">3. 第三者への提供</h4>
-                <p>法令に基づく場合を除き、ユーザーの同意なく個人情報を第三者に提供することはありません。ただし、ユーザーが「共有」機能を利用した場合、発行されたURLを知る誰もが、そのプレイリストを閲覧できます。</p>
+                <p>法令に基づく場合を除き、ユーザーの同意なく個人情報（この場合は匿名ID）を第三者に提供することはありません。ただし、ユーザーが「共有」機能を利用した場合、発行されたURLを知る誰もが、そのプレイリストを閲覧できます。</p>
             </div>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">4. データの保管</h4>
