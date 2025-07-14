@@ -1,19 +1,7 @@
-# Netlifyのビルド設定
 [build]
-  # Reactアプリをビルドするためのコマンド
-  command = "npm run build && sed -i 's|__FIREBASE_CONFIG_PLACEHOLDER__|'\"$REACT_APP_FIREBASE_CONFIG\"'|' build/index.html"
-  
-  # ★★★★★ ここが重要 ★★★★★
-  # Netlifyが公開するフォルダを指定します。
-  # Create React Appの出力先は 'build' です。
+  command = "npm run build"
   publish = "build"
 
-# Netlify Functionsの設定（今回は使いませんが、念のため記述）
-[functions]
-  directory = "netlify/functions"
-
-# シングルページアプリケーション（SPA）用のリダイレクト設定
-# これにより、どのURLにアクセスしても正しくアプリが表示されます。
 [[redirects]]
   from = "/*"
   to = "/index.html"
