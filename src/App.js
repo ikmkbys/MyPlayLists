@@ -59,11 +59,11 @@ try {
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
-    const [auth, setAuth] = useState(authInstance);
-    const [db, setDb] = useState(dbInstance);
+    const [auth] = useState(authInstance);
+    const [db] = useState(dbInstance);
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [firebaseError, setFirebaseError] = useState(firebaseInitializationError);
+    const [firebaseError] = useState(firebaseInitializationError);
 
     const [playlists, setPlaylists] = useState([]);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
