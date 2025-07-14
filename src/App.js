@@ -612,9 +612,13 @@ export default function App() {
                                     <button onClick={handleLogout} className="text-slate-500 hover:text-rose-600 p-2 rounded-full transition-colors" title="ログアウト"><LogOut size={20}/></button>
                                 </div>
                             ) : (
-                                <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg mb-6 transition-colors">
-                                    <LogIn size={20} />
-                                    <span>Googleでログイン</span>
+                                <button 
+                                    onClick={handleGoogleLogin} 
+                                    disabled={!isAuthReady}
+                                    className="w-full flex items-center justify-center gap-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg mb-6 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                >
+                                    {!isAuthReady ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
+                                    <span>{isAuthReady ? 'Googleでログイン' : '準備中...'}</span>
                                 </button>
                             )}
                             
