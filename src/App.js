@@ -26,7 +26,7 @@ import {
     arrayRemove
 } from 'firebase/firestore';
 import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
-
+console.log("Firebase Config from env:", process.env.REACT_APP_FIREBASE_CONFIG);
 // --- Firebase Configuration ---
 // This logic safely handles environment variables for both Netlify deployment and local development.
 const firebaseConfig = 
