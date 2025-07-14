@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "echo 'Firebase Config Var:' \"$REACT_APP_FIREBASE_CONFIG\" && npm run build"
   publish = "build"
 
 [[redirects]]
