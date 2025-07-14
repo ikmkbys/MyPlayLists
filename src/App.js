@@ -25,7 +25,7 @@ import {
     where,
     arrayRemove
 } from 'firebase/firestore';
-import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
+import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Tag, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
 
 // --- Firebase Configuration ---
 // This logic safely handles environment variables for both Netlify deployment and local development.
@@ -198,12 +198,16 @@ export default function App() {
 
     // --- Auth Handlers ---
     const handleGoogleLogin = async () => {
-        if (!auth) return;
+        if (!auth) {
+            alert("認証サービスの準備ができていません。少し待ってからもう一度お試しください。");
+            return;
+        }
         const provider = new GoogleAuthProvider();
         try {
             await signInWithPopup(auth, provider);
         } catch (error) {
             console.error("Google login failed:", error);
+            alert(`ログインに失敗しました。\nエラー: ${error.message}\n\nポップアップがブロックされていないか、Firebaseの承認済みドメインが正しく設定されているか確認してください。`);
         }
     };
 
