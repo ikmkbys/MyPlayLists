@@ -28,28 +28,39 @@ import {
 import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
 
 // --- Firebase Configuration ---
-let firebaseConfig = {};
+const firebaseConfig = 
+    (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
+        ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
+        : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
+
+const appId = 
+    (typeof process !== 'undefined' && process.env.REACT_APP_ID)
+        ? process.env.REACT_APP_ID
+        : (typeof window !== 'undefined' && window.__app_id ? window.__app_id : 'default-my-playlists-app');
+
+// --- One-time Firebase Initialization ---
+let authInstance = null;
+let dbInstance = null;
 let firebaseInitializationError = null;
 
 try {
-    if (typeof window !== 'undefined' && window.__firebase_config && window.__firebase_config !== '__FIREBASE_CONFIG_PLACEHOLDER__') {
-        firebaseConfig = JSON.parse(window.__firebase_config);
+    if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
+        const app = initializeApp(firebaseConfig);
+        authInstance = getAuth(app);
+        dbInstance = getFirestore(app);
     } else {
-        firebaseInitializationError = "Firebaseの設定が読み込めませんでした。";
+        firebaseInitializationError = "Firebaseの設定が読み込めませんでした。Netlifyの環境変数が正しく設定されているか確認してください。";
     }
-} catch (e) {
-    firebaseInitializationError = `Firebase設定の解析に失敗しました: ${e.message}`;
-    console.error("Firebase config parsing error:", e);
+} catch (error) {
+    console.error("Firebase initialization error:", error);
+    firebaseInitializationError = `Firebaseの初期化に失敗しました: ${error.message}`;
 }
-
-const appId = 'default-my-playlists-app';
-
 
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
-    const [auth, setAuth] = useState(null);
-    const [db, setDb] = useState(null);
+    const [auth, setAuth] = useState(authInstance);
+    const [db, setDb] = useState(dbInstance);
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [firebaseError, setFirebaseError] = useState(firebaseInitializationError);
@@ -102,55 +113,45 @@ export default function App() {
     const newContentUrlInputRef = useRef(null);
     const draggedItem = useRef(null);
 
-    // --- Firebase & Auth & Share-Mode Initialization ---
+    // --- Auth State Listener ---
     useEffect(() => {
-        if (!firebaseError && Object.keys(firebaseConfig).length > 0) {
-            try {
-                const app = initializeApp(firebaseConfig);
-                const authInstance = getAuth(app);
-                const dbInstance = getFirestore(app);
-                
-                setAuth(authInstance);
-                setDb(dbInstance);
-
-                const urlParams = new URLSearchParams(window.location.search);
-                const shareUser = urlParams.get('share_user');
-                const sharePlaylist = urlParams.get('share_playlist');
-
-                if (shareUser && sharePlaylist && dbInstance) {
-                    setShareMode(true);
-                    setIsLoadingPlaylists(true);
-                    const fetchSharedPlaylist = async () => {
-                        try {
-                            const playlistRef = doc(dbInstance, `artifacts/${appId}/users/${shareUser}/playlists`, sharePlaylist);
-                            const playlistSnap = await getDoc(playlistRef);
-                            if (playlistSnap.exists() && playlistSnap.data().isPublic) {
-                                const playlistData = { id: playlistSnap.id, ...playlistSnap.data() };
-                                setSharedPlaylistData(playlistData);
-                                setSelectedPlaylist(playlistData);
-                            } else {
-                                setSharedPlaylistData(null);
-                            }
-                        } catch (error) { console.error("Error fetching shared playlist:", error);
-                        } finally { setIsLoadingPlaylists(false); }
-                    };
-                    fetchSharedPlaylist();
-                } else {
-                    const unsubscribe = onAuthStateChanged(authInstance, (user) => {
-                        setUser(user);
-                        setIsAuthReady(true);
-                    });
-                    return () => unsubscribe();
-                }
-            } catch (error) {
-                console.error("Firebase initialization error:", error);
-                setFirebaseError(`Firebaseの初期化に失敗しました: ${error.message}`);
+        if (auth) {
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                setUser(user);
                 setIsAuthReady(true);
-            }
+            });
+            return () => unsubscribe();
         } else {
-             setIsAuthReady(true);
+            setIsAuthReady(true);
         }
-    }, []);
+    }, [auth]);
+
+    // --- Share Mode Initialization ---
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shareUser = urlParams.get('share_user');
+        const sharePlaylist = urlParams.get('share_playlist');
+
+        if (shareUser && sharePlaylist && db) {
+            setShareMode(true);
+            setIsLoadingPlaylists(true);
+            const fetchSharedPlaylist = async () => {
+                try {
+                    const playlistRef = doc(db, `artifacts/${appId}/users/${shareUser}/playlists`, sharePlaylist);
+                    const playlistSnap = await getDoc(playlistRef);
+                    if (playlistSnap.exists() && playlistSnap.data().isPublic) {
+                        const playlistData = { id: playlistSnap.id, ...playlistSnap.data() };
+                        setSharedPlaylistData(playlistData);
+                        setSelectedPlaylist(playlistData);
+                    } else {
+                        setSharedPlaylistData(null);
+                    }
+                } catch (error) { console.error("Error fetching shared playlist:", error);
+                } finally { setIsLoadingPlaylists(false); }
+            };
+            fetchSharedPlaylist();
+        }
+    }, [db]);
 
     // --- Data Fetching (Normal Mode) ---
     useEffect(() => {
