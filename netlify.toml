@@ -1,13 +1,20 @@
+# Netlifyのビルド設定
 [build]
+  # Reactアプリをビルドするためのコマンド
   command = "npm run build"
-  publish = "dist"
-  functions = "netlify/functions"
+  
+  # ★★★★★ ここが重要 ★★★★★
+  # Netlifyが公開するフォルダを指定します。
+  # Create React Appの出力先は 'build' です。
+  publish = "build"
 
+# Netlify Functionsの設定（今回は使いませんが、念のため記述）
 [functions]
-  node_bundler = "esbuild"
+  directory = "netlify/functions"
 
+# シングルページアプリケーション（SPA）用のリダイレクト設定
+# これにより、どのURLにアクセスしても正しくアプリが表示されます。
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  from = "/*"
+  to = "/index.html"
   status = 200
-  force = true
