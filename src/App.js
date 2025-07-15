@@ -35,20 +35,24 @@ console.log("Firebase Config from env:", process.env.REACT_APP_FIREBASE_CONFIG);
 //         : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
 const firebaseConfig = (() => {
     try {
-        if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG) {
-            const parsed = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
-            console.log('Successfully parsed:', parsed);
-            return parsed;
-        }
-        if (typeof window !== 'undefined' && window.__firebase_config) {
-            const parsed = JSON.parse(window.__firebase_config);
-            console.log('Successfully parsed from window:', parsed);
+        const rawConfig = process.env.REACT_APP_FIREBASE_CONFIG;
+        console.log('Raw config type:', typeof rawConfig);
+        console.log('Raw config length:', rawConfig ? rawConfig.length : 0);
+        
+        if (rawConfig) {
+            // 隠れた文字をチェック
+            console.log('First 10 chars:', rawConfig.substring(0, 10));
+            console.log('Last 10 chars:', rawConfig.substring(rawConfig.length - 10));
+            
+            const parsed = JSON.parse(rawConfig);
+            console.log('Parse successful:', parsed);
             return parsed;
         }
         return {};
     } catch (error) {
-        console.error('JSON parse error:', error);
-        console.error('Raw value:', process.env.REACT_APP_FIREBASE_CONFIG);
+        console.error('JSON parse error details:', error);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
         return {};
     }
 })();
