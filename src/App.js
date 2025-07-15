@@ -26,43 +26,18 @@ import {
     arrayRemove
 } from 'firebase/firestore';
 import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
-console.log("Firebase Config from env:", process.env.REACT_APP_FIREBASE_CONFIG);
-// --- Firebase Configuration ---
-// This logic safely handles environment variables for both Netlify deployment and local development.
-// const firebaseConfig = 
-//     (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
-//         ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
-//         : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
+
 const firebaseConfig = (() => {
     try {
-        const rawConfig = process.env.REACT_APP_FIREBASE_CONFIG;
-        console.log('Raw config type:', typeof rawConfig);
-        console.log('Raw config length:', rawConfig ? rawConfig.length : 0);
-        
-        if (rawConfig) {
-            // 隠れた文字をチェック
-            console.log('First 10 chars:', rawConfig.substring(0, 10));
-            console.log('Last 10 chars:', rawConfig.substring(rawConfig.length - 10));
-            
-            const parsed = JSON.parse(rawConfig);
-            console.log('Parse successful:', parsed);
-            return parsed;
+        if (process.env.REACT_APP_FIREBASE_CONFIG) {
+            return JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
         }
         return {};
     } catch (error) {
-        console.error('JSON parse error details:', error);
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
+        console.error('JSON parse error:', error);
         return {};
     }
 })();
-// デバッグ用ログを追加
-console.log('Raw env variable:', process.env.REACT_APP_FIREBASE_CONFIG);
-console.log('Parsed firebaseConfig:', firebaseConfig);
-console.log('firebaseConfig keys:', Object.keys(firebaseConfig));
-console.log('firebaseConfig.apiKey:', firebaseConfig.apiKey);
-console.log('Type of firebaseConfig.apiKey:', typeof firebaseConfig.apiKey);
-console.log('Object.keys length:', Object.keys(firebaseConfig).length);
 
 const appId = 
     (typeof process !== 'undefined' && process.env.REACT_APP_ID)
