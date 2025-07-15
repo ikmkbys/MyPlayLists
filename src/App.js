@@ -34,6 +34,14 @@ const firebaseConfig =
         ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
         : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
 
+// デバッグ用ログを追加
+console.log('Raw env variable:', process.env.REACT_APP_FIREBASE_CONFIG);
+console.log('Parsed firebaseConfig:', firebaseConfig);
+console.log('firebaseConfig keys:', Object.keys(firebaseConfig));
+console.log('firebaseConfig.apiKey:', firebaseConfig.apiKey);
+console.log('Type of firebaseConfig.apiKey:', typeof firebaseConfig.apiKey);
+console.log('Object.keys length:', Object.keys(firebaseConfig).length);
+
 const appId = 
     (typeof process !== 'undefined' && process.env.REACT_APP_ID)
         ? process.env.REACT_APP_ID
