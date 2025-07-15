@@ -29,11 +29,29 @@ import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, Gri
 console.log("Firebase Config from env:", process.env.REACT_APP_FIREBASE_CONFIG);
 // --- Firebase Configuration ---
 // This logic safely handles environment variables for both Netlify deployment and local development.
-const firebaseConfig = 
-    (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
-        ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
-        : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
-
+// const firebaseConfig = 
+//     (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
+//         ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
+//         : (typeof window !== 'undefined' && window.__firebase_config ? JSON.parse(window.__firebase_config) : {});
+const firebaseConfig = (() => {
+    try {
+        if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG) {
+            const parsed = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
+            console.log('Successfully parsed:', parsed);
+            return parsed;
+        }
+        if (typeof window !== 'undefined' && window.__firebase_config) {
+            const parsed = JSON.parse(window.__firebase_config);
+            console.log('Successfully parsed from window:', parsed);
+            return parsed;
+        }
+        return {};
+    } catch (error) {
+        console.error('JSON parse error:', error);
+        console.error('Raw value:', process.env.REACT_APP_FIREBASE_CONFIG);
+        return {};
+    }
+})();
 // デバッグ用ログを追加
 console.log('Raw env variable:', process.env.REACT_APP_FIREBASE_CONFIG);
 console.log('Parsed firebaseConfig:', firebaseConfig);
