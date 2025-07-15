@@ -61,6 +61,7 @@ export default function App() {
     const [db, setDb] = useState(null);
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
+    const [firebaseError, setFirebaseError] = useState(null);
 
     const [playlists, setPlaylists] = useState([]);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
@@ -112,45 +113,52 @@ export default function App() {
 
     // --- Firebase & Auth & Share-Mode Initialization ---
     useEffect(() => {
-        if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
-            const app = initializeApp(firebaseConfig);
-            const authInstance = getAuth(app);
-            const dbInstance = getFirestore(app);
-            
-            setAuth(authInstance);
-            setDb(dbInstance);
+        try {
+            if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
+                const app = initializeApp(firebaseConfig);
+                const authInstance = getAuth(app);
+                const dbInstance = getFirestore(app);
+                
+                setAuth(authInstance);
+                setDb(dbInstance);
 
-            const urlParams = new URLSearchParams(window.location.search);
-            const shareUser = urlParams.get('share_user');
-            const sharePlaylist = urlParams.get('share_playlist');
+                const urlParams = new URLSearchParams(window.location.search);
+                const shareUser = urlParams.get('share_user');
+                const sharePlaylist = urlParams.get('share_playlist');
 
-            if (shareUser && sharePlaylist && dbInstance) {
-                setShareMode(true);
-                setIsLoadingPlaylists(true);
-                const fetchSharedPlaylist = async () => {
-                    try {
-                        const playlistRef = doc(dbInstance, `artifacts/${appId}/users/${shareUser}/playlists`, sharePlaylist);
-                        const playlistSnap = await getDoc(playlistRef);
-                        if (playlistSnap.exists() && playlistSnap.data().isPublic) {
-                            const playlistData = { id: playlistSnap.id, ...playlistSnap.data() };
-                            setSharedPlaylistData(playlistData);
-                            setSelectedPlaylist(playlistData);
-                        } else {
-                            setSharedPlaylistData(null);
-                        }
-                    } catch (error) { console.error("Error fetching shared playlist:", error);
-                    } finally { setIsLoadingPlaylists(false); }
-                };
-                fetchSharedPlaylist();
+                if (shareUser && sharePlaylist && dbInstance) {
+                    setShareMode(true);
+                    setIsLoadingPlaylists(true);
+                    const fetchSharedPlaylist = async () => {
+                        try {
+                            const playlistRef = doc(dbInstance, `artifacts/${appId}/users/${shareUser}/playlists`, sharePlaylist);
+                            const playlistSnap = await getDoc(playlistRef);
+                            if (playlistSnap.exists() && playlistSnap.data().isPublic) {
+                                const playlistData = { id: playlistSnap.id, ...playlistSnap.data() };
+                                setSharedPlaylistData(playlistData);
+                                setSelectedPlaylist(playlistData);
+                            } else {
+                                setSharedPlaylistData(null);
+                            }
+                        } catch (error) { console.error("Error fetching shared playlist:", error);
+                        } finally { setIsLoadingPlaylists(false); }
+                    };
+                    fetchSharedPlaylist();
+                } else {
+                    const unsubscribe = onAuthStateChanged(authInstance, (user) => {
+                        setUser(user);
+                        setIsAuthReady(true);
+                    });
+                    return () => unsubscribe();
+                }
             } else {
-                const unsubscribe = onAuthStateChanged(authInstance, (user) => {
-                    setUser(user);
-                    setIsAuthReady(true);
-                });
-                return () => unsubscribe();
+                setFirebaseError("Firebaseの設定が読み込めませんでした。");
+                setIsAuthReady(true);
             }
-        } else {
-             setIsAuthReady(true);
+        } catch (error) {
+            console.error("Firebase initialization error:", error);
+            setFirebaseError(`Firebaseの初期化に失敗しました: ${error.message}`);
+            setIsAuthReady(true);
         }
     }, []);
 
@@ -598,10 +606,17 @@ export default function App() {
                                     <button onClick={handleLogout} className="text-slate-500 hover:text-rose-600 p-2 rounded-full transition-colors" title="ログアウト"><LogOut size={20}/></button>
                                 </div>
                             ) : (
-                                <button onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg mb-6 transition-colors">
-                                    <LogIn size={20} />
-                                    <span>Googleでログイン</span>
-                                </button>
+                                <div className="mb-6">
+                                    <button 
+                                        onClick={handleGoogleLogin} 
+                                        disabled={!auth}
+                                        className="w-full flex items-center justify-center gap-3 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
+                                    >
+                                        {!auth ? <Loader2 className="animate-spin" size={20} /> : <LogIn size={20} />}
+                                        <span>{!auth ? '準備中...' : 'Googleでログイン'}</span>
+                                    </button>
+                                    {firebaseError && <p className="text-red-500 text-xs mt-2">{firebaseError}</p>}
+                                </div>
                             )}
                             
                             {user && <>
