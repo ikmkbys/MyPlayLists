@@ -27,41 +27,50 @@ import {
 } from 'firebase/firestore';
 import { Plus, Trash2, ListMusic, Link as LinkIcon, Loader2, Edit, Check, X, GripVertical, Share2, Copy, Waves, AlertTriangle, Inbox, Search, Move, LogIn, LogOut, Mail, Shield } from 'lucide-react';
 
-// --- Firebase Configuration ---
-const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {};
-const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-my-playlists-app';
-
-// --- Helper Functions ---
-const detectPlatform = (url) => {
-    if (url.includes('voicy.jp') || url.includes('r.voicy.jp')) return 'Voicy';
-    if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
-    if (url.includes('spotify.com')) return 'Spotify';
-    if (url.includes('stand.fm')) return 'stand.fm';
+const firebaseConfig = (() => {
     try {
-        const domain = new URL(url).hostname.replace('www.', '');
-        return domain;
-    } catch (e) {
-        return 'Web';
+        if (process.env.REACT_APP_FIREBASE_CONFIG) {
+            return JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
+        }
+        return {};
+    } catch (error) {
+        console.error('JSON parse error:', error);
+        return {};
     }
-};
+})();
 
-const getPlatformStyle = (platform) => {
-    const p = platform ? platform.toLowerCase() : '';
-    if (p.includes('voicy')) return 'bg-orange-100 text-orange-800';
-    if (p.includes('youtube')) return 'bg-red-100 text-red-800';
-    if (p.includes('spotify')) return 'bg-green-100 text-green-800';
-    if (p.includes('stand.fm')) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-slate-200 text-slate-600';
-};
+const appId = 
+    (typeof process !== 'undefined' && process.env.REACT_APP_ID)
+        ? process.env.REACT_APP_ID
+        : (typeof window !== 'undefined' && window.__app_id ? window.__app_id : 'default-my-playlists-app');
+
+
+// --- One-time Firebase Initialization ---
+let authInstance = null;
+let dbInstance = null;
+let firebaseInitializationError = null;
+
+try {
+    if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
+        const app = initializeApp(firebaseConfig);
+        authInstance = getAuth(app);
+        dbInstance = getFirestore(app);
+    } else {
+        firebaseInitializationError = "Firebaseの設定が読み込めませんでした。Netlifyの環境変数が正しく設定されているか確認してください。";
+    }
+} catch (error) {
+    console.error("Firebase initialization error:", error);
+    firebaseInitializationError = `Firebaseの初期化に失敗しました: ${error.message}`;
+}
 
 // --- Main App Component ---
 export default function App() {
     // --- State Management ---
-    const [auth, setAuth] = useState(null);
-    const [db, setDb] = useState(null);
+    const [auth] = useState(authInstance);
+    const [db] = useState(dbInstance);
     const [user, setUser] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [firebaseError, setFirebaseError] = useState(null);
+    const [firebaseError] = useState(firebaseInitializationError);
 
     const [playlists, setPlaylists] = useState([]);
     const [selectedPlaylist, setSelectedPlaylist] = useState(null);
@@ -111,56 +120,45 @@ export default function App() {
     const newContentUrlInputRef = useRef(null);
     const draggedItem = useRef(null);
 
-    // --- Firebase & Auth & Share-Mode Initialization ---
+    // --- Auth State Listener ---
     useEffect(() => {
-        try {
-            if (Object.keys(firebaseConfig).length > 0 && firebaseConfig.apiKey) {
-                const app = initializeApp(firebaseConfig);
-                const authInstance = getAuth(app);
-                const dbInstance = getFirestore(app);
-                
-                setAuth(authInstance);
-                setDb(dbInstance);
-
-                const urlParams = new URLSearchParams(window.location.search);
-                const shareUser = urlParams.get('share_user');
-                const sharePlaylist = urlParams.get('share_playlist');
-
-                if (shareUser && sharePlaylist && dbInstance) {
-                    setShareMode(true);
-                    setIsLoadingPlaylists(true);
-                    const fetchSharedPlaylist = async () => {
-                        try {
-                            const playlistRef = doc(dbInstance, `artifacts/${appId}/users/${shareUser}/playlists`, sharePlaylist);
-                            const playlistSnap = await getDoc(playlistRef);
-                            if (playlistSnap.exists() && playlistSnap.data().isPublic) {
-                                const playlistData = { id: playlistSnap.id, ...playlistSnap.data() };
-                                setSharedPlaylistData(playlistData);
-                                setSelectedPlaylist(playlistData);
-                            } else {
-                                setSharedPlaylistData(null);
-                            }
-                        } catch (error) { console.error("Error fetching shared playlist:", error);
-                        } finally { setIsLoadingPlaylists(false); }
-                    };
-                    fetchSharedPlaylist();
-                } else {
-                    const unsubscribe = onAuthStateChanged(authInstance, (user) => {
-                        setUser(user);
-                        setIsAuthReady(true);
-                    });
-                    return () => unsubscribe();
-                }
-            } else {
-                setFirebaseError("Firebaseの設定が読み込めませんでした。");
+        if (auth) {
+            const unsubscribe = onAuthStateChanged(auth, (user) => {
+                setUser(user);
                 setIsAuthReady(true);
-            }
-        } catch (error) {
-            console.error("Firebase initialization error:", error);
-            setFirebaseError(`Firebaseの初期化に失敗しました: ${error.message}`);
+            });
+            return () => unsubscribe();
+        } else {
             setIsAuthReady(true);
         }
-    }, []);
+    }, [auth]);
+
+    // --- Share Mode Initialization ---
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shareUser = urlParams.get('share_user');
+        const sharePlaylist = urlParams.get('share_playlist');
+
+        if (shareUser && sharePlaylist && db) {
+            setShareMode(true);
+            setIsLoadingPlaylists(true);
+            const fetchSharedPlaylist = async () => {
+                try {
+                    const playlistRef = doc(db, `artifacts/${appId}/users/${shareUser}/playlists`, sharePlaylist);
+                    const playlistSnap = await getDoc(playlistRef);
+                    if (playlistSnap.exists() && playlistSnap.data().isPublic) {
+                        const playlistData = { id: playlistSnap.id, ...playlistSnap.data() };
+                        setSharedPlaylistData(playlistData);
+                        setSelectedPlaylist(playlistData);
+                    } else {
+                        setSharedPlaylistData(null);
+                    }
+                } catch (error) { console.error("Error fetching shared playlist:", error);
+                } finally { setIsLoadingPlaylists(false); }
+            };
+            fetchSharedPlaylist();
+        }
+    }, [db]);
 
     // --- Data Fetching (Normal Mode) ---
     useEffect(() => {
@@ -219,12 +217,16 @@ export default function App() {
 
     // --- Auth Handlers ---
     const handleGoogleLogin = async () => {
-        if (!auth) return;
+        if (!auth) {
+            alert("認証サービスの準備ができていません。少し待ってからもう一度お試しください。");
+            return;
+        }
         const provider = new GoogleAuthProvider();
         try {
             await signInWithPopup(auth, provider);
         } catch (error) {
             console.error("Google login failed:", error);
+            alert(`ログインに失敗しました。\nエラー: ${error.code}\n\nポップアップがブロックされていないか、Firebaseの承認済みドメインが正しく設定されているか確認してください。`);
         }
     };
 
@@ -316,6 +318,19 @@ export default function App() {
     };
 
     // --- Content Handlers ---
+    const detectPlatform = (url) => {
+        if (url.includes('voicy.jp') || url.includes('r.voicy.jp')) return 'Voicy';
+        if (url.includes('youtube.com') || url.includes('youtu.be')) return 'YouTube';
+        if (url.includes('spotify.com')) return 'Spotify';
+        if (url.includes('stand.fm')) return 'stand.fm';
+        try {
+            const domain = new URL(url).hostname.replace('www.', '');
+            return domain;
+        } catch (e) {
+            return 'Web';
+        }
+    };
+
     const handleAddContent = async (e) => {
         e.preventDefault();
         setContentFormError('');
@@ -523,6 +538,7 @@ export default function App() {
 
     // --- Sharing Logic ---
     const openShareModal = (playlist) => {
+        if (!user) return;
         setPlaylistToShare(playlist);
         setShareLink(`${window.location.origin}${window.location.pathname}?share_user=${user.uid}&share_playlist=${playlist.id}`);
         setIsShareModalOpen(true);
@@ -556,6 +572,16 @@ export default function App() {
         ? playlists.filter(p => activeFilterTags.every(t => (p.tags || []).includes(t)))
         : playlists;
         
+    const getPlatformStyle = (platform) => {
+        const p = platform ? platform.toLowerCase() : '';
+        if (p.includes('voicy')) return 'bg-orange-100 text-orange-800';
+        if (p.includes('youtube')) return 'bg-red-100 text-red-800';
+        if (p.includes('spotify')) return 'bg-green-100 text-green-800';
+        if (p.includes('stand.fm')) return 'bg-yellow-100 text-yellow-800';
+        return 'bg-slate-200 text-slate-600';
+    };
+
+
     // --- Render Logic ---
     const renderLoading = () => <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
 
@@ -679,9 +705,9 @@ export default function App() {
                         <main className="lg:col-span-8 xl:col-span-9 bg-white/70 backdrop-blur-xl border border-white/80 p-8 rounded-2xl shadow-lg min-h-[60vh]">
                            {!user ? (
                                 <div className="flex flex-col items-center justify-center h-full text-center text-slate-500">
-                                    <LogIn size={64} className="mb-4" />
-                                    <h3 className="text-2xl font-semibold text-slate-600">ログインしてください</h3>
-                                    <p className="mt-2">左側のボタンからGoogleアカウントでログインして、<br/>あなただけのプレイリスト管理を始めましょう。</p>
+                                    <ListMusic size={64} className="mb-4" />
+                                    <h3 className="text-2xl font-semibold text-slate-600">ようこそ</h3>
+                                    <p className="mt-2">アプリの利用を開始しています...</p>
                                 </div>
                            ) : activeView === 'search' ? (
                                 <div>
@@ -875,20 +901,15 @@ const PrivacyPolicyModal = ({ closeModal }) => (
             <p>本アプリケーション「MyPlayLists」（以下、本アプリ）は、開発者 ikmkbys（以下、当方）が提供するものです。ユーザーの皆様に安心してご利用いただくため、以下の通りプライバシーポリシーを定めます。</p>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">1. 収集する情報</h4>
-                <p>本アプリでは、以下の情報を収集します。<br/>
-                - Googleアカウント情報（表示名、メールアドレス、プロフィール写真）: ユーザー認証および識別のため。<br/>
-                - ユーザーが作成したデータ（プレイリスト名、タグ、コンテンツのURL、タイトル、作者名など）: アプリの基本機能を提供するため。</p>
+                <p>本アプリは、ユーザーを識別するために、Firebase Authenticationによる匿名認証IDのみを利用します。Googleアカウント情報などの個人情報は収集しません。</p>
             </div>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">2. 情報の利用目的</h4>
-                <p>収集した情報は、以下の目的で利用します。<br/>
-                - ログイン機能の提供<br/>
-                - 複数端末間でのデータ同期<br/>
-                - アプリの機能改善および不具合修正</p>
+                <p>収集した匿名認証IDは、ユーザーが作成したプレイリストデータを、他のユーザーのデータと区別して安全に保管するためにのみ利用します。</p>
             </div>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">3. 第三者への提供</h4>
-                <p>法令に基づく場合を除き、ユーザーの同意なく個人情報を第三者に提供することはありません。ただし、ユーザーが「共有」機能を利用した場合、発行されたURLを知る誰もが、そのプレイリストを閲覧できます。</p>
+                <p>法令に基づく場合を除き、ユーザーの同意なく個人情報（この場合は匿名ID）を第三者に提供することはありません。ただし、ユーザーが「共有」機能を利用した場合、発行されたURLを知る誰もが、そのプレイリストを閲覧できます。</p>
             </div>
             <div>
                 <h4 className="font-semibold text-slate-800 mb-1">4. データの保管</h4>
